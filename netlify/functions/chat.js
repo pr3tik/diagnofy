@@ -8,31 +8,25 @@ export const handler = async (event) => {
   if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
   try {
     const { messages, system } = JSON.parse(event.body);
-    if (!process.env.GEMINI_API_KEY) {
-      return { statusCode: 500, headers, body: JSON.stringify({ error: "GEMINI_API_KEY not set in Netlify environment variables." }) };
+    if (!process.env.GROQ_API_KEY) {
+      return { statusCode: 500, headers, body: JSON.stringify({ error: "GROQ_API_KEY not set in Netlify environment variables." }) };
     }
-    const contents = [
-      { role: "user", parts: [{ text: `[SYSTEM]\n${system}` }] },
-      { role: "model", parts: [{ text: "Understood. I am Diagnofy, ready to help." }] },
-      ...messages.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
-    ];
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+      },
       body: JSON.stringify({
-        contents,
-        generationConfig: { maxOutputTokens: 1000, temperature: 0.7 },
-        safetySettings: [
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-        ],
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "system", content: system }, ...messages],
+        max_tokens: 1000,
+        temperature: 0.7,
       }),
     });
     const data = await res.json();
-    if (!res.ok) return { statusCode: res.status, headers, body: JSON.stringify({ error: data?.error?.message || "Gemini error" }) };
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Unable to process. Please try again.";
+    if (!res.ok) return { statusCode: res.status, headers, body: JSON.stringify({ error: data?.error?.message || "Groq error" }) };
+    const reply = data.choices?.[0]?.message?.content || "Unable to process. Please try again.";
     return { statusCode: 200, headers, body: JSON.stringify({ content: [{ type: "text", text: reply }] }) };
   } catch (err) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
